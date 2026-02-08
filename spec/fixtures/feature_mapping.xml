@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<featureMappingFile>
+  <featureDescription>
+    <feature refUID="0x00000001">BSH.Common.Status.OperationState</feature>
+    <feature refUID="0x00000002">BSH.Common.Option.StartInRelative</feature>
+    <feature refUID="0x00000003">Some.Program</feature>
+  </featureDescription>
+  <errorDescription>
+    <error refEID="0x00000001">SomeError</error>
+  </errorDescription>
+  <enumDescriptionList>
+    <enumDescription refENID="0x00000010">
+      <enumMember refValue="0">Off</enumMember>
+      <enumMember refValue="1">On</enumMember>
+    </enumDescription>
+  </enumDescriptionList>
+</featureMappingFile>

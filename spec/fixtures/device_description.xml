@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<device>
+  <description>
+    <brand>Bosch</brand>
+    <type>Dishwasher</type>
+    <model>TestModel</model>
+    <version>1</version>
+    <revision>0</revision>
+  </description>
+
+  <statusList>
+    <status uid="0x00000001" refCID="0x00000003" enumerationType="0x00000010" access="read" available="true"/>
+  </statusList>
+
+  <optionList>
+    <option uid="0x00000002" refCID="0x00000002" access="readwrite" available="true" min="0" max="3600" stepSize="60"/>
+  </optionList>
+
+  <programGroup>
+    <program uid="0x00000003" refCID="0x00000002" execution="selectandstart">
+      <option refUID="0x00000002" access="readwrite" available="true"/>
+    </program>
+  </programGroup>
+
+  <activeProgram uid="0x00000003" refCID="0x00000002"/>
+  <selectedProgram uid="0x00000003" refCID="0x00000002"/>
+</device>

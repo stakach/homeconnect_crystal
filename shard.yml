@@ -1,0 +1,9 @@
+name: homeconnect_local
+version: 0.1.0
+
+authors:
+  - Stephen von Takach <management@ipaw.org.au>
+
+crystal: '>= 1.19.1'
+
+license: MIT
