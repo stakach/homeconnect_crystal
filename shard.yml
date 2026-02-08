@@ -1,9 +1,15 @@
 name: homeconnect_local
 version: 0.1.0
 
-authors:
-  - Stephen von Takach <management@ipaw.org.au>
+dependencies:
+  dns:
+    github: spider-gazelle/dns
 
-crystal: '>= 1.19.1'
+development_dependencies:
+  ameba:
+    github: crystal-ameba/ameba
+
+authors:
+  - Stephen von Takach <steve@vontaka.ch>
 
 license: MIT
