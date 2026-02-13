@@ -78,6 +78,63 @@ module HomeconnectLocal
         json.field "data", data
       end
     end
+
+    # Parse appliance frames defensively. Some appliances occasionally send
+    # boolean false for numeric envelope fields (for example code/version).
+    def self.parse_loose(raw : String) : Message
+      obj = JSON.parse(raw).as_h
+
+      action = Action::GET
+      if action_any = obj["action"]?
+        if action_str = action_any.as_s?
+          action = Action.parse?(action_str.upcase) || Action::GET
+        end
+      end
+
+      data = [] of JSON::Any
+      if data_any = obj["data"]?
+        if arr = data_any.as_a?
+          data = arr
+        else
+          data = [data_any]
+        end
+      end
+
+      Message.new(
+        resource: obj["resource"]?.try(&.as_s) || "/",
+        action: action,
+        data: data,
+        sid: coerce_i64(obj["sID"]?),
+        msg_id: coerce_i64(obj["msgID"]?),
+        version: coerce_i32(obj["version"]?),
+        code: coerce_i32(obj["code"]?)
+      )
+    end
+
+    private def self.coerce_i64(any : JSON::Any?) : Int64?
+      return nil unless any
+
+      case raw = any.raw
+      when Int64
+        raw
+      when Int32
+        raw.to_i64
+      when Float64
+        raw.to_i64
+      when String
+        return nil if raw.empty? || raw == "false" || raw == "null"
+        raw.to_i64?
+      else
+        nil
+      end
+    end
+
+    private def self.coerce_i32(any : JSON::Any?) : Int32?
+      v = coerce_i64(any)
+      return nil unless v
+      return nil if v < Int32::MIN || v > Int32::MAX
+      v.to_i32
+    end
   end
 
   class Error < Exception; end
@@ -262,7 +319,6 @@ module HomeconnectLocal
       @connected = false
     end
 
-    # ameba:disable Metrics/CyclomaticComplexity
     def connect(timeout : Time::Span = 60.seconds)
       @handshake_error = nil
       @handshake_started = false
@@ -285,15 +341,21 @@ module HomeconnectLocal
       ws.on_binary do |bytes|
         mark_rx_activity
         if @mode == TransportMode::AES
+          json = ""
           begin
             debug_log("RX binary len=#{bytes.size}")
             framing = @framing || raise ProtocolError.new("Missing AES framing")
             json = framing.decrypt(bytes)
             debug_log("RX #{json}")
-            msg = Message.from_json(json)
+            msg = Message.parse_loose(json)
             handle_message(msg)
           rescue ex
             STDERR.puts "[homeconnect] decode error: #{format_exception(ex)}"
+            if json.empty?
+              STDERR.puts "[homeconnect] decode payload (binary hex): #{bytes.hexstring}"
+            else
+              STDERR.puts "[homeconnect] decode payload (json): #{json}"
+            end
           end
         else
           STDERR.puts "[homeconnect] unexpected binary frame (TLS) len=#{bytes.size}"
@@ -305,10 +367,11 @@ module HomeconnectLocal
         if @mode == TransportMode::TLS_PSK
           begin
             debug_log("RX #{text}")
-            msg = Message.from_json(text)
+            msg = Message.parse_loose(text)
             handle_message(msg)
           rescue ex
             STDERR.puts "[homeconnect] json decode error: #{format_exception(ex)}"
+            STDERR.puts "[homeconnect] decode payload (json): #{text}"
           end
         else
           # AES mode should be binary; log text if happens
@@ -349,8 +412,6 @@ module HomeconnectLocal
         raise NotConnected.new("Handshake failed: #{format_exception(ex)}")
       end
     end
-
-    # ameba:enable Metrics/CyclomaticComplexity
 
     def close
       @closed = true
@@ -453,7 +514,6 @@ module HomeconnectLocal
       end
     end
 
-    # ameba:disable Metrics/CyclomaticComplexity
     private def perform_handshake(msg : Message)
       @sid = msg.sid
       # edMsgID is inside data[0]["edMsgID"]
@@ -525,8 +585,6 @@ module HomeconnectLocal
       return if @closed || @handshake_error
       @connected = true
     end
-
-    # ameba:enable Metrics/CyclomaticComplexity
 
     private def set_service_versions(msg : Message)
       data = msg.data

@@ -10,7 +10,6 @@ module HomeconnectLocal
 
   # Converters similar to python TYPE_MAPPING.
   module TypeMapping
-    # ameba:disable Metrics/CyclomaticComplexity
     def self.convert(protocol_type : String?, value : JSON::Any) : JSON::Any
       return value if protocol_type.nil?
       case protocol_type
@@ -69,7 +68,6 @@ module HomeconnectLocal
         value
       end
     end
-    # ameba:enable Metrics/CyclomaticComplexity
   end
 
   class Entity
@@ -126,7 +124,18 @@ module HomeconnectLocal
         @access = Access.parse_loose(a.to_s)
       end
       if av = h["available"]?
-        @available = av.raw.as?(Bool) || (av.to_s.to_i != 0)
+        if b = av.raw.as?(Bool)
+          @available = b
+        elsif i = av.raw.as?(Int32)
+          @available = i != 0
+        elsif i = av.raw.as?(Int64)
+          @available = i != 0
+        elsif s = av.raw.as?(String)
+          low = s.downcase
+          @available = (low == "true" || low == "1")
+        else
+          @available = av.to_s == "true"
+        end
       end
       if mn = h["min"]?
         @min = mn.to_s.to_f64
@@ -144,7 +153,10 @@ module HomeconnectLocal
       if @access && !{@access}.includes?(Access::READ_WRITE) && !{@access}.includes?(Access::WRITE_ONLY)
         raise ProtocolError.new("Not writable")
       end
-      if @available == false
+      # Some command entities are write-only and advertised as unavailable
+      # until runtime conditions are met; mirror homeconnect-websocket behavior
+      # by allowing write-only entities to be sent and let the appliance decide.
+      if @available == false && @access != Access::WRITE_ONLY
         raise ProtocolError.new("Not available")
       end
 

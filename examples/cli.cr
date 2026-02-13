@@ -120,11 +120,29 @@ private def apply_values_payload(data : Array(JSON::Any), cache : Hash(Int32, JS
   end
 end
 
+private def apply_entity_payload(data : Array(JSON::Any), entities : Hash(Int32, HomeconnectLocal::Entity))
+  data.each do |entry_any|
+    entry = entry_any.as_h?
+    next unless entry
+    uid = entry["uid"]?.try(&.as_i?.try(&.to_i32))
+    next unless uid
+    entities[uid]?.try(&.update_from_hash(entry))
+  end
+end
+
 private def refresh_values(client : HomeconnectLocal::Client, cache : Hash(Int32, JSON::Any)) : Int32
   rsp = client.send_sync(HomeconnectLocal::Message.new(resource: "/ro/allMandatoryValues", action: HomeconnectLocal::Action::GET))
   before = cache.size
   apply_values_payload(rsp.data, cache)
   cache.size - before
+end
+
+private def refresh_description_changes(client : HomeconnectLocal::Client, entities : Hash(Int32, HomeconnectLocal::Entity)) : Int32
+  rsp = client.send_sync(HomeconnectLocal::Message.new(resource: "/ro/allDescriptionChanges", action: HomeconnectLocal::Action::GET))
+  before_available_false = entities.values.count(&.available.==(false))
+  apply_entity_payload(rsp.data, entities)
+  after_available_false = entities.values.count(&.available.==(false))
+  before_available_false - after_available_false
 end
 
 private def print_entities(
@@ -240,11 +258,16 @@ client.debug_frames = debug_frames
 client.keepalive_status_from_description = description
 
 value_cache = {} of Int32 => JSON::Any
+entity_cache = {} of Int32 => HomeconnectLocal::Entity
+uid_to_desc.each do |uid, desc|
+  entity_cache[uid] = HomeconnectLocal::Entity.new(desc, client)
+end
 
 client.on_notify = ->(msg : HomeconnectLocal::Message) do
   if msg.resource == "/ro/values"
     before = value_cache.dup
     apply_values_payload(msg.data, value_cache)
+    apply_entity_payload(msg.data, entity_cache)
     msg.data.each do |entry_any|
       entry = entry_any.as_h?
       next unless entry
@@ -268,6 +291,7 @@ client.on_notify = ->(msg : HomeconnectLocal::Message) do
       print "> "
     end
   elsif msg.resource == "/ro/descriptionChange"
+    apply_entity_payload(msg.data, entity_cache)
     puts
     puts "[NOTIFY] /ro/descriptionChange received"
     print "> "
@@ -283,6 +307,13 @@ begin
   puts "Initial values loaded: #{value_cache.size} entries (#{added} newly added)."
 rescue ex
   STDERR.puts "warning: unable to refresh mandatory values: #{ex.message}"
+end
+
+begin
+  made_available = refresh_description_changes(client, entity_cache)
+  puts "Initial description changes loaded (entities made available: #{made_available})."
+rescue ex
+  STDERR.puts "warning: unable to refresh description changes: #{ex.message}"
 end
 
 loop do
@@ -379,7 +410,7 @@ loop do
 
     begin
       value = parse_value_for_desc(raw_value, desc)
-      entity = HomeconnectLocal::Entity.new(desc || raise("missing description"), client)
+      entity = entity_cache[uid]? || HomeconnectLocal::Entity.new(desc || raise("missing description"), client)
       entity.value_raw = value
       value_cache[uid] = value
       puts "OK: #{desc.try(&.name) || uid.to_s} <= #{display_value(desc, value)}"
@@ -413,7 +444,7 @@ loop do
     next unless raw_value
 
     begin
-      entity = HomeconnectLocal::Entity.new(desc || raise("missing description"), client)
+      entity = entity_cache[uid]? || HomeconnectLocal::Entity.new(desc || raise("missing description"), client)
       value = parse_value_for_desc(raw_value, desc)
       entity.value_raw = value
       value_cache[uid] = value
@@ -450,7 +481,7 @@ loop do
 
     begin
       value = parse_value_for_desc(raw_value, desc)
-      entity = HomeconnectLocal::Entity.new(desc || raise("missing description"), client)
+      entity = entity_cache[uid]? || HomeconnectLocal::Entity.new(desc || raise("missing description"), client)
       entity.value_raw = value
       puts "Command sent: #{desc.try(&.name) || uid.to_s} value=#{display_value(desc, value)}"
     rescue ex
@@ -510,7 +541,7 @@ loop do
       else
         program.start(options, override_options: true)
         options.each { |k, v| value_cache[k] = v }
-        puts "Program start sent."
+        puts "Program start sent with: #{options}"
       end
     rescue ex
       puts "Program action failed: #{ex.message}"

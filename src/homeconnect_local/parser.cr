@@ -123,7 +123,6 @@ module HomeconnectLocal
       nil
     end
 
-    # ameba:disable Metrics/CyclomaticComplexity
     private def self.parse_entity(node : XML::Node, fm : FeatureMap, is_program : Bool = false) : EntityDesc
       uid_hex = node["uid"]? || node["@uid"]?
       raise "missing uid" unless uid_hex
@@ -180,8 +179,6 @@ module HomeconnectLocal
         execution: exec_parsed
       )
     end
-
-    # ameba:enable Metrics/CyclomaticComplexity
 
     private def self.parse_bool(s : String) : Bool
       case s.downcase

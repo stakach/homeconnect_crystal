@@ -36,6 +36,21 @@ describe HomeconnectLocal do
     msg.version.should be_nil
   end
 
+  it "parses messages with boolean false in numeric envelope fields" do
+    payload = %({"sID":1104548025,"msgID":false,"resource":"/ro/descriptionChange","version":false,"action":"NOTIFY","data":[{"uid":546,"available":false}],"code":false})
+
+    msg = HomeconnectLocal::Message.parse_loose(payload)
+
+    msg.sid.should eq(1_104_548_025_i64)
+    msg.msg_id.should be_nil
+    msg.version.should be_nil
+    msg.code.should be_nil
+    msg.resource.should eq("/ro/descriptionChange")
+    msg.action.should eq(HomeconnectLocal::Action::NOTIFY)
+    msg.data[0].as_h["uid"].as_i.should eq(546)
+    msg.data[0].as_h["available"].as_bool.should be_false
+  end
+
   it "sets keepalive uid from first setting description entry" do
     client = HomeconnectLocal::Client.new(
       host: "127.0.0.1",

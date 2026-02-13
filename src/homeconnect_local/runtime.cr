@@ -626,7 +626,6 @@ module HomeconnectLocal
         EntityState.new(state: state, attributes: attrs)
       end
 
-      # ameba:disable Metrics/CyclomaticComplexity
       def handle_service(service : String, data : Hash(String, JSON::Any))
         raise UnknownService.new("#{domain}.#{service}") unless service == "turn_on"
 
@@ -675,8 +674,6 @@ module HomeconnectLocal
         Runtime.send_values(@transport, entries)
         apply_entries(entries)
       end
-
-      # ameba:enable Metrics/CyclomaticComplexity
 
       def apply_value_payload(payload : Hash(String, JSON::Any))
         uid = payload["uid"]?.try(&.as_i?)

@@ -89,6 +89,26 @@ describe HomeconnectLocal::Entity do
     payload["value"].as_bool.should be_true
   end
 
+  it "allows write-only entities to send even when currently unavailable" do
+    t = FakeTransport.new
+    desc = HomeconnectLocal::EntityDesc.new(
+      uid: 546,
+      name: "BSH.Common.Command.ResumeProgram",
+      protocol_type: "Boolean",
+      access: HomeconnectLocal::Access::WRITE_ONLY,
+      available: false
+    )
+    ent = HomeconnectLocal::Entity.new(desc, t)
+
+    ent.value_raw = JSON::Any.new(true)
+
+    msg = t.last_msg || raise "expected last message to be recorded"
+    msg.resource.should eq("/ro/values")
+    payload = msg.data[0].as_h
+    payload["uid"].as_i.should eq(546)
+    payload["value"].as_bool.should be_true
+  end
+
   it "maps enum value to string representation" do
     t = FakeTransport.new
     desc = HomeconnectLocal::EntityDesc.new(
@@ -127,6 +147,26 @@ describe HomeconnectLocal::Entity do
     ent.min.should eq(10.0)
     ent.max.should eq(50.0)
     ent.step.should eq(5.0)
+  end
+
+  it "updates available=false from description changes without numeric coercion errors" do
+    t = FakeTransport.new
+    desc = HomeconnectLocal::EntityDesc.new(
+      uid: 542,
+      name: "Test.Command",
+      protocol_type: "Boolean",
+      access: HomeconnectLocal::Access::WRITE_ONLY,
+      available: true
+    )
+    ent = HomeconnectLocal::Entity.new(desc, t)
+
+    ent.update_from_hash({
+      "uid"       => JSON::Any.new(542_i64),
+      "parentUID" => JSON::Any.new(8208_i64),
+      "available" => JSON::Any.new(false),
+    })
+
+    ent.available.should eq(false)
   end
 end
 
