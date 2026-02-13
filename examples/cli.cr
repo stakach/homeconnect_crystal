@@ -145,6 +145,18 @@ private def refresh_description_changes(client : HomeconnectLocal::Client, entit
   before_available_false - after_available_false
 end
 
+private def fetch_camera_resource(client : HomeconnectLocal::Client, path : String)
+  rsp = client.send_sync(HomeconnectLocal::Message.new(resource: path, action: HomeconnectLocal::Action::GET))
+  puts "OK GET #{path}"
+  puts "  action=#{rsp.action} code=#{rsp.code.inspect} version=#{rsp.version.inspect}"
+  puts "  data_count=#{rsp.data.size}"
+  rsp.data.each_with_index do |entry, idx|
+    puts "  data[#{idx}]: #{entry.to_json}"
+  end
+rescue ex
+  puts "GET #{path} failed: #{ex.class}: #{ex.message}"
+end
+
 private def print_entities(
   list : Array(EntityDesc),
   kind : String,
@@ -288,12 +300,35 @@ client.on_notify = ->(msg : HomeconnectLocal::Message) do
       name = desc.try(&.name) || "UID_#{uid}"
       puts
       puts "[EVENT] #{name} (0x#{uid.to_s(16).rjust(8, '0')}) => #{new_rendered}"
+      puts "        raw: #{entry.to_json}"
       print "> "
     end
   elsif msg.resource == "/ro/descriptionChange"
+    before_by_uid = {} of Int32 => Bool?
+    msg.data.each do |entry_any|
+      entry = entry_any.as_h?
+      next unless entry
+      uid = entry["uid"]?.try(&.as_i?.try(&.to_i32))
+      next unless uid
+      before_by_uid[uid] = entity_cache[uid]?.try(&.available)
+    end
     apply_entity_payload(msg.data, entity_cache)
     puts
     puts "[NOTIFY] /ro/descriptionChange received"
+    msg.data.each do |entry_any|
+      entry = entry_any.as_h?
+      next unless entry
+      uid = entry["uid"]?.try(&.as_i?.try(&.to_i32))
+      if uid
+        name = uid_to_desc[uid]?.try(&.name) || "UID_#{uid}"
+        before_av = before_by_uid[uid]?
+        after_av = entity_cache[uid]?.try(&.available)
+        puts "[DESCRIPTION] #{name} (0x#{uid.to_s(16).rjust(8, '0')}) availability #{before_av.inspect} -> #{after_av.inspect}"
+      else
+        puts "[DESCRIPTION] uid=<missing>"
+      end
+      puts "             raw: #{entry.to_json}"
+    end
     print "> "
   end
 end
@@ -333,6 +368,7 @@ loop do
   puts " 12) Run/select program"
   puts " 13) Refresh values from device"
   puts " 14) Discover devices (mDNS)"
+  puts " 15) Fetch camera image (experimental)"
   puts "  q) Quit"
 
   choice = prompt("")
@@ -555,6 +591,16 @@ loop do
     end
   when "14"
     print_discovery.call
+  when "15"
+    default_paths = ["/ci/camera/snapshot", "/ci/camera/1/snapshot"]
+    raw_path = prompt("Camera resource path (blank to try #{default_paths.join(", ")})") || ""
+    if raw_path.empty?
+      default_paths.each do |path|
+        fetch_camera_resource(client, path)
+      end
+    else
+      fetch_camera_resource(client, raw_path)
+    end
   when "q", "quit", "exit"
     break
   else
